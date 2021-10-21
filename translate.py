@@ -11,11 +11,13 @@ import torch.nn as nn
 import torch.optim as optim
 import torchtext
 from torchtext.legacy.data import Field, BucketIterator
-import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
 import spacy
 from torchtext.legacy import data
 from model import Encoder, Decoder, Seq2Seq
+
+
+spacy_vn = spacy.load('vi_spacy_model')
+
 
 def load_vocab(path):
     stoi_vocab = dict()
@@ -31,8 +33,8 @@ def load_vocab(path):
 
 def load_model(path, src_vocab, trg_vocab): 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    INPUT_DIM = len(SRC.vocab)
-    OUTPUT_DIM = len(TRG.vocab)
+    INPUT_DIM = len(src_vocab[0])
+    OUTPUT_DIM = len(trg_vocab[0])
     HID_DIM = 256
     ENC_LAYERS = 3
     DEC_LAYERS = 3
@@ -62,6 +64,7 @@ def load_model(path, src_vocab, trg_vocab):
     TRG_PAD_IDX = trg_vocab[0]['<pad>']
 
     model = Seq2Seq(enc, dec, SRC_PAD_IDX, TRG_PAD_IDX, device).to(device)
+    model.load_state_dict(torch.load(path,map_location=torch.device('cpu')))
     return model
 
 
@@ -69,10 +72,7 @@ def load_model(path, src_vocab, trg_vocab):
 
 SRC_VOCAB = load_vocab('resources/vocabs/src.txt')
 TRG_VOCAB = load_vocab('resources/vocabs/trg.txt')
-MODEL     = load_model('resources/model/tut6-model.pt')
-
-def stoi(VO): pass
-def itos(VO): pass
+MODEL     = load_model('resources/model/tut6-model.pt', src_vocab=SRC_VOCAB, trg_vocab=TRG_VOCAB)
 def tokenize_vn(text):
     """
     Tokenizes English text from a string into a list of strings (tokens)
@@ -80,7 +80,7 @@ def tokenize_vn(text):
     return [tok.text for tok in spacy_vn.tokenizer(text)]
 
 def translate(sentence, src_field, trg_field, model, device, max_len = 50):
-    
+
     model.eval()
         
     if isinstance(sentence, str):
@@ -90,11 +90,8 @@ def translate(sentence, src_field, trg_field, model, device, max_len = 50):
         tokens = [token.lower() for token in sentence]
 
     tokens = ['<sos>'] + tokens + ['<eos>']
-        
     src_indexes = [src_field[0][token] for token in tokens]
-
     src_tensor = torch.LongTensor(src_indexes).unsqueeze(0).to(device)
-    
     src_mask = model.make_src_mask(src_tensor)
     
     with torch.no_grad():
@@ -102,28 +99,23 @@ def translate(sentence, src_field, trg_field, model, device, max_len = 50):
 
     trg_indexes = [trg_field[0]['<sos>']]
 
-    for i in range(max_len):
+    for i in range(50):
 
         trg_tensor = torch.LongTensor(trg_indexes).unsqueeze(0).to(device)
-
         trg_mask = model.make_trg_mask(trg_tensor)
         
         with torch.no_grad():
             output, attention = model.decoder(trg_tensor, enc_src, trg_mask, src_mask)
-        
         pred_token = output.argmax(2)[:,-1].item()
-        
         trg_indexes.append(pred_token)
 
         if pred_token == trg_field[0]['<eos>']:
             break
-    
-    trg_tokens = [trg_field[1][i] for i in trg_indexes]
-    
+    trg_tokens = [trg_field[1][str(i)] for i in trg_indexes]
     return ' '.join(trg_tokens[1:])
 
 
 def correct(sentence):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     lst = tokenize_vn(sentence)
-    return translate(sentence, SRC_VOCAB, SRC_VOCAB, MODEL, device)
+    return translate(sentence, SRC_VOCAB, TRG_VOCAB, MODEL, device)
