@@ -107,10 +107,11 @@ def translate(sentence, src_field, trg_field, model, device, max_len = 50):
         with torch.no_grad():
             output, attention = model.decoder(trg_tensor, enc_src, trg_mask, src_mask)
         pred_token = output.argmax(2)[:,-1].item()
-        trg_indexes.append(pred_token)
 
         if pred_token == trg_field[0]['<eos>']:
             break
+        trg_indexes.append(pred_token)
+
     trg_tokens = [trg_field[1][str(i)] for i in trg_indexes]
     return ' '.join(trg_tokens[1:])
 
